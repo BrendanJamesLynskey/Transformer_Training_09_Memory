@@ -8,9 +8,9 @@ Sixteen bytes per parameter; Korthikanti et al.'s activation formula; LLaMA 7B b
 
 ## Live, animated companion
 
-This deck is the slide companion to Part 2 (Training) of [Transformer Decoder Explained](https://transformer-decoder-explained.vercel.app/training), where the same model trains in your browser:
+This deck is the slide companion to Part 2 (Training) of [Transformer Decoder Explained](https://transformer-training-explained.vercel.app/training), where the same model trains in your browser:
 
-- [Chapter 10: Memory](https://transformer-decoder-explained.vercel.app/training/10-memory)
+- [Chapter 10: Memory](https://transformer-training-explained.vercel.app/training/10-memory)
 
 ## Where the numbers come from
 
