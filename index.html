@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transformer Training 09 — Memory: Sixteen Bytes per Parameter, and Activations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Source+Code+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f2027;
+            --bg-card: #13272f;
+            --bg-code: #182f38;
+            --text-primary: #ede7dd;
+            --text-secondary: #8ca5a9;
+            --accent: #83c395;
+            --accent-dim: #83c39544;
+            --accent-glow: #83c39533;
+            --border: #23404a;
+            --font-display: 'Sora', sans-serif;
+            --font-mono: 'Source Code Pro', 'Source Code Pro', monospace;
+            --font-body: 'Manrope', sans-serif;
+            --max-width: 900px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 17px;
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            position: relative;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .hero > * { position: relative; z-index: 1; }
+        .series-label {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+        .hero h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+            margin-bottom: 1rem;
+        }
+        .hero h1 .accent { color: var(--accent); }
+        .hero .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin-bottom: 2rem;
+        }
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-bottom: 2.5rem;
+        }
+        .tag {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+            white-space: nowrap;
+        }
+        .pipeline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+            max-width: var(--max-width);
+        }
+        .pipeline-step {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            padding: 0.3rem 0.7rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .pipeline-arrow { color: var(--accent); font-size: 0.9rem; font-weight: 700; }
+        .slide {
+            min-height: 100vh;
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 4rem 1.5rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .slide-number {
+            font-family: var(--font-display);
+            font-size: 5rem;
+            font-weight: 700;
+            color: var(--accent-dim);
+            position: absolute;
+            top: 2rem;
+            right: 1.5rem;
+            line-height: 1;
+            user-select: none;
+        }
+        .slide h2 {
+            font-family: var(--font-display);
+            font-size: 1.9rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 1.5rem;
+            line-height: 1.25;
+        }
+        .slide h3 {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .slide p { margin-bottom: 1rem; color: var(--text-secondary); }
+        .slide p strong { color: var(--text-primary); }
+        .slide ul, .slide ol { margin-bottom: 1rem; padding-left: 1.5rem; color: var(--text-secondary); }
+        .slide li { margin-bottom: 0.4rem; }
+        .slide li strong { color: var(--text-primary); }
+        .slide code {
+            font-family: var(--font-mono);
+            font-size: 0.88em;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+            color: #cfd7d1;
+        }
+        .code-block {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 1.25rem 0;
+            overflow: hidden;
+        }
+        .code-header {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            background: rgba(131,195,149,0.08);
+            padding: 0.4rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .code-block pre { margin: 0; padding: 1rem; overflow-x: auto; }
+        .code-block code {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #cfd7d1;
+            background: transparent;
+            border: none;
+            padding: 0;
+        }
+        .kw { color: #f48f70; }
+        .fn { color: #d4c0ea; }
+        .str { color: #c3dbea; }
+        .cm { color: #8ca5a9; font-style: italic; }
+        .num { color: #a8cee8; }
+        .type { color: #eac48b; }
+        .dir { color: #f48f70; }
+        .mac { color: #eac48b; }
+        .table-wrap {
+            overflow-x: auto;
+            margin: 1.25rem 0;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th {
+            background: var(--bg-code);
+            color: var(--accent);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-display);
+            white-space: nowrap;
+        }
+        td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:nth-child(even) td { background: rgba(19,39,47,0.5); }
+        .diagram-flow {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-box {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            text-align: center;
+            white-space: nowrap;
+        }
+        .diagram-box.accent { border-color: var(--accent); color: var(--accent); background: rgba(131,195,149,0.08); }
+        .diagram-box.dim { color: var(--text-secondary); border-color: var(--border); }
+        .diagram-arrow { color: var(--accent); font-size: 1.3rem; font-weight: 700; }
+        .diagram-vertical {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-vertical .diagram-arrow { font-size: 1.1rem; }
+        .hierarchy {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .hierarchy-level { display: flex; align-items: center; gap: 0.75rem; }
+        .hierarchy-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 80px;
+            text-align: right;
+        }
+        .hierarchy-items { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+        .hierarchy-item {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .hierarchy-item.accent { border-color: var(--accent); color: var(--accent); background: rgba(131,195,149,0.08); }
+        .diagram-grid {
+            display: grid;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+        .diagram-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .diagram-panel {
+            padding: 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .diagram-panel.accent-border { border-left: 3px solid var(--accent); }
+        .diagram-panel h4 {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        .diagram-panel p, .diagram-panel ul { font-size: 0.85rem; }
+        .callout {
+            background: var(--bg-card);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 1rem 1.25rem;
+            margin: 1.25rem 0;
+        }
+        .callout p { margin-bottom: 0; }
+        .callout p + p { margin-top: 0.5rem; }
+        .callout .callout-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.3rem;
+        }
+        .contents-list { list-style: none; padding-left: 0; counter-reset: contents; }
+        .contents-list li {
+            counter-increment: contents;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .contents-list li:last-child { border-bottom: none; }
+        .contents-list li::before {
+            content: counter(contents, decimal-leading-zero);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            min-width: 2rem;
+        }
+        .contents-list a { color: var(--text-primary); text-decoration: none; transition: color 0.2s; }
+        .contents-list a:hover { color: var(--accent); }
+        .footer {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            max-width: var(--max-width);
+            margin: 0 auto;
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        .canvas-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.25rem 0;
+            overflow-x: auto;
+        }
+        .canvas-wrap canvas, .canvas-wrap svg { display: block; margin: 0 auto; max-width: 100%; }
+        .badge {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            padding: 0.1rem 0.45rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            vertical-align: middle;
+            margin-left: 0.3rem;
+        }
+        .badge.ok    { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+        .badge.warn  { border-color: #eac48b; color: #eac48b; background: rgba(234,196,139,0.08); }
+        .badge.bad   { border-color: #f48f70; color: #f48f70; background: rgba(244,143,112,0.08); }
+        @media (max-width: 640px) {
+            .slide { padding: 3rem 1rem; min-height: auto; }
+            .slide-number { font-size: 3rem; top: 1.5rem; right: 1rem; }
+            .slide h2 { font-size: 1.5rem; }
+            .diagram-grid.cols-2, .diagram-grid.cols-3 { grid-template-columns: 1fr; }
+            .pipeline { gap: 0.15rem; }
+            .pipeline-step { font-size: 0.6rem; padding: 0.2rem 0.4rem; }
+            .hero h1 { font-size: 1.8rem; }
+            table { font-size: 0.78rem; }
+        }
+        .slide p a, .slide td a, .slide li a, .callout a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+        .slide p a:hover, .slide td a:hover, .slide li a:hover, .callout a:hover { border-bottom-style: solid; }
+        .hero { overflow: hidden; }
+        .diagram-panel { min-width: 0; }
+        .metric-label .katex, .callout-label .katex, .series-label .katex,
+        .metric-label .katex *, .callout-label .katex * { text-transform: none; }
+        .canvas-wrap canvas { image-rendering: auto; }
+        .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.25rem 0; }
+        @media (max-width: 640px) { .katex-display { font-size: 0.8em; } }
+        .chart-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin: 1.25rem 0; }
+        .chart-wrap svg { display: block; width: 100%; height: auto; }
+        .chart-cap { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.4rem; }
+        .live-link { font-family: var(--font-mono); font-size: 0.8rem; margin-top: 1rem; }
+        .widget { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1.25rem 0; }
+        .widget .row { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; margin-bottom: 0.6rem; }
+        .widget label { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; }
+        .widget input[type=range] { width: 160px; max-width: 100%; accent-color: var(--accent); }
+        .widget select { background: var(--bg-code); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.4rem; font-family: var(--font-mono); font-size: 0.78rem; }
+        .widget button { background: var(--bg-code); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0.35rem 0.8rem; font-family: var(--font-mono); font-size: 0.78rem; cursor: pointer; min-height: 36px; }
+        .widget button:hover { background: var(--accent-dim); }
+        .widget .out { font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); }
+        .widget .cap { font-size: 0.82rem; color: var(--text-secondary); min-height: 2.6em; }
+        .widget svg { display: block; width: 100%; height: auto; }
+        .num-strong { color: var(--text-primary); font-weight: 600; }
+    /* deck-mobile-fix:hero */ .hero{overflow:hidden}@supports (overflow-x:clip){.hero{overflow:visible;overflow-x:clip}}
+    /* deck-mobile-fix:phone */ @media (max-width:640px){.diagram-box,.tier-fill,.section-divider>span,.action-btn{white-space:normal;overflow-wrap:anywhere}.diagram-grid>*,.diagram-panel,.diagram-box,.code-block,.callout,.metric,.control-group,.control-row>*,.pipeline-body,.roll-track>*,.tier-fill,.timeline-row>*{min-width:0;max-width:100%}p,li,a,code,td,th,.callout,.diagram-panel{overflow-wrap:break-word}pre{max-width:100%;overflow-x:auto}table{display:block;max-width:100%;overflow-x:auto}.katex-display,.bits,.canvas-wrap,.influence-map-wrapper,.timeline-track,div:has(>.bank-cell){max-width:100%;overflow-x:auto;overflow-y:hidden}select,input,img,video,iframe,.action-btn{max-width:100%}canvas{max-width:100%;height:auto}}
+            /* tt-charts */
+        .chart .plot-bg { fill: none; }
+        .chart .grid { stroke: var(--border); stroke-width: 1; }
+        .chart .axis { stroke: var(--text-secondary); stroke-width: 1; }
+        .chart .lbl { fill: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; }
+        .chart .lbl.ax { fill: var(--text-primary); font-size: 12.5px; }
+        .chart .hline { stroke: var(--text-secondary); stroke-dasharray: 2 4; }
+        .chart .ln { fill: none; stroke-width: 2.2; }
+        .chart .eb { stroke-width: 1.4; }
+        .chart .legend-bg { fill: var(--bg-primary); stroke: var(--border); opacity: 0.92; }
+        .s1 { stroke: #56b4e9; fill: #56b4e9; } .s2 { stroke: #e69f00; fill: #e69f00; }
+        .s3 { stroke: #009e73; fill: #3fbf96; } .s4 { stroke: #cc79a7; fill: #cc79a7; }
+        .s5 { stroke: #f0e442; fill: #f0e442; } .s6 { stroke: #d55e00; fill: #d55e00; }
+        .s0 { stroke: var(--text-secondary); fill: var(--text-secondary); }
+        .ln { fill: none !important; }
+        .chart .bar { stroke: none; opacity: 0.85; }
+        .chart .lbl.inbar { fill: var(--bg-primary); font-weight: 600; }
+        @media (max-width: 640px) { .chart .lbl { font-size: 14px; } .chart .lbl.ax { font-size: 14px; } .wg-text, .wg-dim { font-size: 15px; } }
+        .wg-cell { fill: var(--bg-code); stroke: var(--border); }
+        .wg-text { fill: var(--text-primary); font-family: var(--font-mono); font-size: 13px; }
+        .wg-dim { fill: var(--text-secondary); font-family: var(--font-mono); font-size: 13px; }
+        .wg-hot { fill: #e69f00; } .wg-done { fill: #009e73; } .wg-cool { fill: #56b4e9; } .wg-idle { fill: var(--bg-code); stroke: var(--border); }
+        .wg-fwd { fill: #56b4e9; } .wg-bwd { fill: #e69f00; }
+    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false})"></script>
+</head>
+<body>
+<header class="hero">
+    <div class="series-label">Transformer Training &mdash; Presentation 09</div>
+    <h1>Training <span class="accent">Memory</span></h1>
+    <p class="subtitle">LLaMA 7B's weights take 13.5 GB, yet training it needs far more. Sixteen bytes per parameter for mixed-precision Adam, activations that grow with sequence and batch, and the trade activation checkpointing makes: a live calculator.</p>
+
+    <div class="tags">
+        <span class="tag">16 bytes/parameter</span>
+        <span class="tag">Optimiser state</span>
+        <span class="tag">Activations</span>
+        <span class="tag">Checkpointing</span>
+        <span class="tag">Selective recompute</span>
+        <span class="tag">LLaMA 7B</span>
+    </div>
+
+    <div class="pipeline">
+        <span class="pipeline-step">Weights</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Gradients</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Adam</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Master</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Activations</span>
+    </div>
+</header>
+
+<section class="slide" id="slide-00">
+    <div class="slide-number">00</div>
+    <h2>Topics We&rsquo;ll Cover</h2>
+    <ul class="contents-list">
+        <li><a href="#slide-01">Sixteen Bytes per Parameter</a></li>
+        <li><a href="#slide-02">Activations: What the Backward Pass Needs</a></li>
+        <li><a href="#slide-03">The Memory Calculator</a></li>
+        <li><a href="#slide-04">LLaMA 7B, Four Ways</a></li>
+        <li><a href="#slide-05">Activation Checkpointing: Full and Selective</a></li>
+        <li><a href="#slide-06">Counted on Part 1&rsquo;s Model</a></li>
+        <li><a href="#slide-07">Still Too Much for One Device</a></li>
+        <li><a href="#slide-08">What to Take Away</a></li>
+    </ul>
+    <div class="callout">
+        <div class="callout-label">Live companion and sources</div>
+        <p>This deck follows <a href="https://transformer-decoder-explained.vercel.app/training/10-memory">chapter 10, memory</a>, where one device&rsquo;s memory is animated event by event through a training step. Measured numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md#10-memory-chapter-10">results.md &sect;10</a>; the calculator below is a port of the site&rsquo;s <code>scripts/training/memory.py</code>.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-01">
+    <div class="slide-number">01</div>
+    <h2>Sixteen Bytes per Parameter</h2>
+    <p>LLaMA 7B&rsquo;s weights take 13.5 GB at two bytes each, yet training it on one device needs far more. With mixed-precision Adam (decks 04 and 08) every parameter costs:</p>
+    <div class="diagram-flow">
+        <div class="diagram-box">BF16 weight 2</div><span class="diagram-arrow">+</span>
+        <div class="diagram-box">BF16 gradient 2</div><span class="diagram-arrow">+</span>
+        <div class="diagram-box accent">Adam m 4 + v 4</div><span class="diagram-arrow">+</span>
+        <div class="diagram-box">FP32 master 4</div><span class="diagram-arrow">=</span>
+        <div class="diagram-box accent">16 bytes</div>
+    </div>
+    <p>That is ZeRO&rsquo;s accounting (<a href="https://arxiv.org/abs/1910.02054">Rajbhandari et al. 2020, &sect;3.1</a>, \(K = 12\) bytes of optimiser state including the master copy). Plain FP32 Adam also costs 16 (4 + 4 + 8). For LLaMA 7B (6,738,415,616 parameters by the calculator; <a href="https://arxiv.org/abs/2302.13971">Touvron et al. 2023</a>, Table 2, lists 6.7B) that is <strong>107.8 GB</strong> before a single activation.</p>
+</section>
+
+<section class="slide" id="slide-02">
+    <div class="slide-number">02</div>
+    <h2>Activations: What the Backward Pass Needs</h2>
+    <p>The backward pass needs, at every operation, what the forward pass computed there (<a href="https://brendanjameslynskey.github.io/Transformer_Training_03_Backpropagation/#slide-07">deck 03</a>). <a href="https://arxiv.org/abs/2205.05198">Korthikanti et al. (2022)</a> count it for a GPT layer with 16-bit activations:</p>
+    $$\text{bytes per layer} = s\,b\,h\,\Big(34 + \frac{5\,a\,s}{h}\Big)$$
+    <p>for sequence length \(s\), micro-batch \(b\), width \(h\) and \(a\) heads. The \(5as/h\) term is attention&rsquo;s \(s \times s\) score and weight matrices, one per head (<a href="https://transformer-decoder-explained.vercel.app/learn/03-attention">Part 1, chapter 3</a>): it grows with the <strong>square of the sequence</strong>. For LLaMA 7B at sequence 4,096 and one sequence per step that is 104.2 GB over 32 layers, about as much again as everything else, and it doubles with every doubling of the micro-batch. The whole budget per device:</p>
+    $$M = 16N + L\,s\,b\,h\,(34 + 5as/h) + 6\,s\,b\,V$$
+</section>
+
+<section class="slide" id="slide-03">
+    <div class="slide-number">03</div>
+    <h2>The Memory Calculator</h2>
+    <p>LLaMA 7B&rsquo;s shape (\(L\) 32, \(h\) 4,096, \(a\) 32, SwiGLU FFN 11,008, vocabulary 32,000, untied head, RMSNorm). Peak = the largest total over one step, walked event by event: gradients are written during the backward pass as activations are freed, so the peak is not simply everything at once.</p>
+    <div class="widget" id="mem-widget">
+        <div class="row">
+            <label>sequence <select id="mem-s"><option>1024</option><option>2048</option><option selected>4096</option><option>8192</option></select></label>
+            <label>micro-batch <select id="mem-b"><option selected>1</option><option>2</option><option>4</option><option>8</option></select></label>
+            <label>recompute <select id="mem-r"><option value="none">none</option><option value="selective">selective</option><option value="full">full</option></select></label>
+            <label>recipe <select id="mem-p"><option value="mixed">mixed-precision Adam</option><option value="fp32">FP32 Adam</option></select></label>
+        </div>
+        <svg id="mem-svg" viewBox="0 0 480 120" role="img" aria-label="Memory breakdown"></svg>
+        <div class="out" id="mem-out"></div>
+        <div class="cap" id="mem-cap" aria-live="polite"></div>
+    </div>
+    <script>
+    (function () {
+        const C = { L: 32, h: 4096, a: 32, f: 11008, V: 32000 };
+        const params = c => { const norm = c.h; return c.L * (4 * c.h * c.h + 3 * c.h * c.f + 2 * norm) + c.V * c.h * 2 + norm; };
+        const act = (c, r) => r === 'none' ? c.s * c.b * c.h * (34 + 5 * c.a * c.s / c.h) : r === 'selective' ? 34 * c.s * c.b * c.h : 2 * c.s * c.b * c.h;
+        function peak(c, rec, r) {   // port of memory.py timeline(): the largest total over one step
+            const n = params(c), L = c.L, full = act(c, 'none'), kept = act(c, r), logits = c.s * c.b * c.V * 6;
+            const head = c.V * c.h * rec.g, layerGrad = (n * rec.g - head) / L;
+            const base = n * rec.w + n * rec.opt + n * rec.master;
+            const acts = new Array(L).fill(0); let grads = 0, pk = 0;
+            const snap = (extra, lg) => { let s = 0; for (const v of acts) s += v; pk = Math.max(pk, base + grads + s + extra + lg); };
+            snap(0, 0);
+            for (let i = 0; i < L; i++) { acts[i] = kept; snap(0, 0); }
+            snap(0, logits); grads += head; snap(0, logits);
+            for (let i = L - 1; i >= 0; i--) { if (r !== 'none') snap(full, 0); grads += layerGrad; acts[i] = 0; snap(0, 0); }
+            snap(0, 0);
+            return { n, peak: pk, weights: n * rec.w, grads: n * rec.g, opt: n * rec.opt, master: n * rec.master, acts: L * kept, logits };
+        }
+        const RECIPES = { mixed: { w: 2, g: 2, opt: 8, master: 4 }, fp32: { w: 4, g: 4, opt: 8, master: 0 } };
+        window.__memPeak = (s, b, r, p) => peak({ ...C, s, b }, RECIPES[p], r);
+        const GB = x => (x / 1e9).toFixed(1) + ' GB';
+        function upd() {
+            const s = +document.getElementById('mem-s').value, b = +document.getElementById('mem-b').value, r = document.getElementById('mem-r').value, p = document.getElementById('mem-p').value;
+            const m = peak({ ...C, s, b }, RECIPES[p], r);
+            const parts = [['weights', m.weights, 'wg-cool'], ['gradients', m.grads, 'wg-done'], ['Adam m, v', m.opt, 'wg-hot'], ['master', m.master, 'wg-dim'], ['activations', m.acts, 'wg-fwd'], ['logits', m.logits, 'wg-bwd']];
+            const tot = parts.reduce((a, q) => a + q[1], 0), scale = 440 / Math.max(tot, 250e9);
+            let x = 20, g = '';
+            for (const [n, v, c] of parts) { const w = v * scale; if (w > 0) g += '<rect x="' + x + '" y="20" width="' + w + '" height="40" class="' + c + '" style="stroke:var(--bg-primary)"/>'; x += w; }
+            const px = 20 + m.peak * scale;
+            g += '<line x1="' + px + '" x2="' + px + '" y1="10" y2="70" stroke="var(--text-primary)" stroke-dasharray="3 3"/><text class="wg-text" x="' + Math.min(px, 400) + '" y="88" text-anchor="middle">peak ' + GB(m.peak) + '</text>';
+            g += '<line x1="' + (20 + 80e9 * scale) + '" x2="' + (20 + 80e9 * scale) + '" y1="10" y2="70" stroke="var(--accent)"/><text class="wg-dim" x="' + (20 + 80e9 * scale) + '" y="110" text-anchor="middle">80 GB device</text>';
+            document.getElementById('mem-svg').innerHTML = g;
+            document.getElementById('mem-out').textContent = parts.map(q => q[0] + ' ' + GB(q[1])).join(' · ');
+            document.getElementById('mem-cap').textContent = 'Peak ' + GB(m.peak) + ' for ' + m.n.toLocaleString('en-GB') + ' parameters at sequence ' + s + ', micro-batch ' + b + ', recompute ' + r + '.';
+        }
+        ['mem-s', 'mem-b', 'mem-r', 'mem-p'].forEach(id => document.getElementById(id).addEventListener('change', upd));
+        upd();
+    })();
+    </script>
+    <p style="font-size:0.8rem">Bar colours: weights, gradients, Adam state, master copy, activations, logits; dashed line = peak; solid line = one 80 GB accelerator.</p>
+</section>
+
+<section class="slide" id="slide-04">
+    <div class="slide-number">04</div>
+    <h2>LLaMA 7B, Four Ways</h2>
+    <p>Sequence 4,096, micro-batch 1, bytes on one device (results.md &sect;10; the calculator above reproduces every peak):</p>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Recipe</th><th>Weights</th><th>Gradients</th><th>Optimiser</th><th>Master</th><th>Activations</th><th>Logits</th><th>Peak</th></tr></thead>
+            <tbody>
+                <tr><td>mixed-precision Adam, no recomputation</td><td>13.5 GB</td><td>13.5 GB</td><td>53.9 GB</td><td>27.0 GB</td><td>104.2 GB</td><td>0.8 GB</td><td><strong>199.5 GB</strong></td></tr>
+                <tr><td>mixed-precision Adam, selective recomputation</td><td>13.5 GB</td><td>13.5 GB</td><td>53.9 GB</td><td>27.0 GB</td><td>18.3 GB</td><td>0.8 GB</td><td><strong>116.1 GB</strong></td></tr>
+                <tr><td>mixed-precision Adam, full recomputation</td><td>13.5 GB</td><td>13.5 GB</td><td>53.9 GB</td><td>27.0 GB</td><td>1.1 GB</td><td>0.8 GB</td><td><strong>110.7 GB</strong></td></tr>
+                <tr><td>FP32 Adam, no recomputation</td><td>27.0 GB</td><td>27.0 GB</td><td>53.9 GB</td><td>0.0 GB</td><td>104.2 GB</td><td>0.8 GB</td><td><strong>186.3 GB</strong></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>Even with full recomputation, the 16 bytes per parameter remain and the peak is still over 100 GB: more than any single accelerator holds. Memory, not compute, is what first forces a model to be split across devices.</p>
+</section>
+
+<section class="slide" id="slide-05">
+    <div class="slide-number">05</div>
+    <h2>Activation Checkpointing: Full and Selective</h2>
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Full recomputation</h4>
+            <p>Keep only each layer&rsquo;s input (\(2\,sbh\) bytes) and, during the backward pass, recompute the layer&rsquo;s forward pass to get the rest back (<a href="https://arxiv.org/abs/1604.06174">Chen et al. 2016</a>). It costs one extra forward pass per step: roughly a third more compute, since backward costs about twice forward.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Selective recomputation</h4>
+            <p>Korthikanti et al. keep everything but the attention scores and weights (the \(5as/h\) term), which are cheap to recompute and expensive to store: \(34\,sbh\) per layer. Most of the activation saving, recomputing only the cheap part.</p>
+        </div>
+    </div>
+    <p>For LLaMA 7B the peak falls from 199.5 GB with no recomputation to 116.1 GB (selective) and 110.7 GB (full). With recomputation, the backward pass re-creates one layer&rsquo;s full activations at a time on top of the checkpoints, which the calculator counts.</p>
+</section>
+
+<section class="slide" id="slide-06">
+    <div class="slide-number">06</div>
+    <h2>Counted on Part 1&rsquo;s Model</h2>
+    <p>The formula can be checked against a real backward pass. Part 1&rsquo;s model keeps <strong>2,320</strong> values per sequence per block for its backward pass, counted in the reference trainer&rsquo;s forward pass; Korthikanti et al.&rsquo;s formula for the same shape gives <strong>2,496</strong> (results.md &sect;10).</p>
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border"><h4>Why they differ in detail</h4><p>The formula assumes a feed-forward layer four times the model&rsquo;s width (Part 1&rsquo;s is twice) and dropout masks (Part 1 has none).</p></div>
+        <div class="diagram-panel accent-border"><h4>Why they agree in size</h4><p>Both count the same things: inputs to every linear layer, GELU&rsquo;s pre-activation, attention&rsquo;s weights, each norm&rsquo;s input. It is the activations, not the weights, that grow with the sequence and the batch.</p></div>
+    </div>
+    <p>For Part 1&rsquo;s whole model in mixed precision: 5,376 parameters &times; 16 bytes = 86,016 bytes of state, and a peak of 286,208 bytes per step at 16 sequences of 8: about a quarter of a megabyte.</p>
+</section>
+
+<section class="slide" id="slide-07">
+    <div class="slide-number">07</div>
+    <h2>Still Too Much for One Device</h2>
+    <p>The next step is to stop every device holding everything:</p>
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border"><h4>Shard the state: ZeRO / FSDP</h4><p>Split optimiser states, gradients and finally weights across the data-parallel workers: 16 bytes per parameter divided by the number of workers (<a href="https://brendanjameslynskey.github.io/Transformer_Training_10_Data_Parallelism_and_ZeRO/">deck 10</a>).</p></div>
+        <div class="diagram-panel accent-border"><h4>Split the model</h4><p>Tensor parallelism splits each layer; pipeline parallelism splits the stack; sequence parallelism splits the activations (<a href="https://brendanjameslynskey.github.io/Transformer_Training_11_Model_Parallelism/">deck 11</a>).</p></div>
+    </div>
+    <p>The site&rsquo;s <a href="https://colab.research.google.com/github/BrendanJamesLynskey/transformer-explainer/blob/main/notebooks/10_activation_checkpointing.ipynb">notebook 10</a> measures peak memory (<code>torch.cuda.max_memory_allocated</code>) with and without checkpointing a 12-layer model on a GPU: <strong>GPU run pending</strong>; the calculator is not yet checked against it.</p>
+</section>
+
+<section class="slide" id="slide-08">
+    <div class="slide-number">08</div>
+    <h2>What to Take Away</h2>
+    <ul>
+        <li>Mixed-precision Adam: <strong>16 bytes per parameter</strong> (2 + 2 + 8 + 4) before any activation. LLaMA 7B: 107.8 GB.</li>
+        <li>Activations: \(sbh(34 + 5as/h)\) per layer, growing with the sequence squared and with the batch.</li>
+        <li><strong>Checkpointing</strong> trades about a third more compute (full) or a little (selective) for most of the activation memory.</li>
+        <li>Past one device&rsquo;s memory, shard the state (ZeRO) or split the model.</li>
+    </ul>
+    <p class="live-link">Animated: <a href="https://transformer-decoder-explained.vercel.app/training/10-memory">chapter 10, memory</a> &middot; next: <a href="https://brendanjameslynskey.github.io/Transformer_Training_10_Data_Parallelism_and_ZeRO/">deck 10, data parallelism and ZeRO</a></p>
+</section>
+
+<footer class="footer">
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-decoder-explained.vercel.app/training/10-memory">chapter 10, Memory</a> of <a href="https://transformer-decoder-explained.vercel.app/training">Transformer Decoder Explained, Part 2</a></p>
+    <p style="margin-top: 0.5rem; font-size: 0.8rem;"><a href="https://brendanjameslynskey.github.io/Transformer_Training_08_Mixed_Precision/">&larr; 08 Mixed Precision</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/LLM_Hub_Transformer_Training/">Series index</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/Transformer_Training_10_Data_Parallelism_and_ZeRO/">10 Data Parallel &rarr;</a></p>
+    <p style="margin-top: 0.5rem; font-size: 0.75rem;">Measured numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> (transformer-explainer @15b1c9f). Code on these slides is cut from that repository.</p>
+</footer>
+<script>
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.slide').forEach(slide => {
+        slide.style.opacity = '0';
+        slide.style.transform = 'translateY(30px)';
+        slide.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+        observer.observe(slide);
+    });
+</script>
+</body>
+</html>
