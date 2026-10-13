@@ -4,11 +4,11 @@ LLaMA 7B's weights take 13.5 GB, yet training it needs far more. Sixteen bytes p
 
 **Live site:** https://brendanjameslynskey.github.io/Transformer_Training_09_Memory/
 
-Sixteen bytes per parameter; Korthikanti et al.'s activation formula; LLaMA 7B by the calculator (interactive); full and selective activation checkpointing; Part 1's model counted against the formula.
+Sixteen bytes per parameter; Korthikanti et al.'s activation formula; LLaMA 7B by the calculator (interactive); full and selective activation checkpointing; the Decoder's model counted against the formula.
 
 ## Live, animated companion
 
-This deck is the slide companion to Part 2 (Training) of [Transformer Decoder Explained](https://transformer-training-explained.vercel.app/training), where the same model trains in your browser:
+This deck is the slide companion to [Training](https://transformer-training-explained.vercel.app/training), the second site of the Foundations track (after Decoder), where the Decoder's model trains in your browser:
 
 - [Chapter 10: Memory](https://transformer-training-explained.vercel.app/training/10-memory)
 

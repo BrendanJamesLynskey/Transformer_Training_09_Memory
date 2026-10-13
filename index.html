@@ -488,7 +488,7 @@
         <li><a href="#slide-03">The Memory Calculator</a></li>
         <li><a href="#slide-04">LLaMA 7B, Four Ways</a></li>
         <li><a href="#slide-05">Activation Checkpointing: Full and Selective</a></li>
-        <li><a href="#slide-06">Counted on Part 1&rsquo;s Model</a></li>
+        <li><a href="#slide-06">Counted on the Decoder&rsquo;s Model</a></li>
         <li><a href="#slide-07">Still Too Much for One Device</a></li>
         <li><a href="#slide-08">What to Take Away</a></li>
     </ul>
@@ -517,7 +517,7 @@
     <h2>Activations: What the Backward Pass Needs</h2>
     <p>The backward pass needs, at every operation, what the forward pass computed there (<a href="https://brendanjameslynskey.github.io/Transformer_Training_03_Backpropagation/#slide-07">deck 03</a>). <a href="https://arxiv.org/abs/2205.05198">Korthikanti et al. (2022)</a> count it for a GPT layer with 16-bit activations:</p>
     $$\text{bytes per layer} = s\,b\,h\,\Big(34 + \frac{5\,a\,s}{h}\Big)$$
-    <p>for sequence length \(s\), micro-batch \(b\), width \(h\) and \(a\) heads. The \(5as/h\) term is attention&rsquo;s \(s \times s\) score and weight matrices, one per head (<a href="https://transformer-decoder-explained.vercel.app/learn/03-attention">Part 1, chapter 3</a>): it grows with the <strong>square of the sequence</strong>. For LLaMA 7B at sequence 4,096 and one sequence per step that is 104.2 GB over 32 layers, about as much again as everything else, and it doubles with every doubling of the micro-batch. The whole budget per device:</p>
+    <p>for sequence length \(s\), micro-batch \(b\), width \(h\) and \(a\) heads. The \(5as/h\) term is attention&rsquo;s \(s \times s\) score and weight matrices, one per head (<a href="https://transformer-decoder-explained.vercel.app/learn/03-attention">Decoder, chapter 3</a>): it grows with the <strong>square of the sequence</strong>. For LLaMA 7B at sequence 4,096 and one sequence per step that is 104.2 GB over 32 layers, about as much again as everything else, and it doubles with every doubling of the micro-batch. The whole budget per device:</p>
     $$M = 16N + L\,s\,b\,h\,(34 + 5as/h) + 6\,s\,b\,V$$
 </section>
 
@@ -614,13 +614,13 @@
 
 <section class="slide" id="slide-06">
     <div class="slide-number">06</div>
-    <h2>Counted on Part 1&rsquo;s Model</h2>
-    <p>The formula can be checked against a real backward pass. Part 1&rsquo;s model keeps <strong>2,320</strong> values per sequence per block for its backward pass, counted in the reference trainer&rsquo;s forward pass; Korthikanti et al.&rsquo;s formula for the same shape gives <strong>2,496</strong> (results.md &sect;10).</p>
+    <h2>Counted on the Decoder&rsquo;s Model</h2>
+    <p>The formula can be checked against a real backward pass. The Decoder&rsquo;s model keeps <strong>2,320</strong> values per sequence per block for its backward pass, counted in the reference trainer&rsquo;s forward pass; Korthikanti et al.&rsquo;s formula for the same shape gives <strong>2,496</strong> (results.md &sect;10).</p>
     <div class="diagram-grid cols-2">
-        <div class="diagram-panel accent-border"><h4>Why they differ in detail</h4><p>The formula assumes a feed-forward layer four times the model&rsquo;s width (Part 1&rsquo;s is twice) and dropout masks (Part 1 has none).</p></div>
+        <div class="diagram-panel accent-border"><h4>Why they differ in detail</h4><p>The formula assumes a feed-forward layer four times the model&rsquo;s width (the Decoder&rsquo;s is twice) and dropout masks (the Decoder&rsquo;s has none).</p></div>
         <div class="diagram-panel accent-border"><h4>Why they agree in size</h4><p>Both count the same things: inputs to every linear layer, GELU&rsquo;s pre-activation, attention&rsquo;s weights, each norm&rsquo;s input. It is the activations, not the weights, that grow with the sequence and the batch.</p></div>
     </div>
-    <p>For Part 1&rsquo;s whole model in mixed precision: 5,376 parameters &times; 16 bytes = 86,016 bytes of state, and a peak of 286,208 bytes per step at 16 sequences of 8: about a quarter of a megabyte.</p>
+    <p>For the Decoder&rsquo;s whole model in mixed precision: 5,376 parameters &times; 16 bytes = 86,016 bytes of state, and a peak of 286,208 bytes per step at 16 sequences of 8: about a quarter of a megabyte.</p>
 </section>
 
 <section class="slide" id="slide-07">
@@ -647,7 +647,7 @@
 </section>
 
 <footer class="footer">
-    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-training-explained.vercel.app/training/10-memory">chapter 10, Memory</a> of <a href="https://transformer-training-explained.vercel.app/training">Transformer Decoder Explained, Part 2</a></p>
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-training-explained.vercel.app/training/10-memory">chapter 10, Memory</a> of the <a href="https://transformer-training-explained.vercel.app/training">Training</a> site</p>
     <p style="margin-top: 0.5rem; font-size: 0.8rem;"><a href="https://brendanjameslynskey.github.io/Transformer_Training_08_Mixed_Precision/">&larr; 08 Mixed Precision</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/LLM_Hub_Transformer_Training/">Series index</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/Transformer_Training_10_Data_Parallelism_and_ZeRO/">10 Data Parallel &rarr;</a></p>
     <p style="margin-top: 0.5rem; font-size: 0.75rem;">Measured numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> (transformer-explainer @15b1c9f). Code on these slides is cut from that repository.</p>
 </footer>
